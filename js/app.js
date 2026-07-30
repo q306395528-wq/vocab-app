@@ -373,49 +373,121 @@ const App = {
   /* ---------------- 统计页 ---------------- */
   renderStats() {
     const c = Store.counts();
-    const days = this.lastNDays(14);
     const daily = Store.data.daily;
+    const days = this.lastNDays(14);
     const max = Math.max(1, ...days.map(d => (daily[d]?.studied || 0)));
     const bars = days.map(d => {
       const v = daily[d]?.studied || 0;
       const h = Math.round((v / max) * 100);
-      const dd = d.slice(5);
-      return `<div class="bar-col"><div class="bar" style="height:${Math.max(4, h)}%" title="${d}: ${v}"></div><div class="bar-x">${dd}</div></div>`;
+      return `<div class="bar-col"><div class="bar" style="height:${Math.max(4, h)}%" title="${d}: ${v}"></div><div class="bar-x">${d.slice(5)}</div></div>`;
     }).join("");
 
     const totalStudied = Object.values(daily).reduce((a, b) => a + (b.studied || 0), 0);
-    const masteredPct = c.total ? Math.round((c.mastered / c.total) * 100) : 0;
+    const activeDays = Object.values(daily).filter(d => (d.studied || 0) > 0).length;
+    const learnedToday = Store.todayLearned();
 
     return `
       <h2 class="page-title">学习统计</h2>
+
+      <section class="card">
+        <div class="mastery">
+          ${this.masteryDonut(c)}
+          <div class="mastery-legend">
+            <div class="ml-row"><span class="dot seg-mastered"></span>已掌握<b>${c.mastered}</b></div>
+            <div class="ml-row"><span class="dot seg-review"></span>复习中<b>${c.review}</b></div>
+            <div class="ml-row"><span class="dot seg-learning"></span>学习中<b>${c.learning}</b></div>
+            <div class="ml-row"><span class="dot seg-new"></span>未学习<b>${c.untouched}</b></div>
+          </div>
+        </div>
+      </section>
+
       <section class="grid2">
-        <div class="stat-card"><div class="stat-num">${totalStudied}</div><div class="stat-label">累计点击次数</div></div>
-        <div class="stat-card"><div class="stat-num">${Store.data.streak.count || 0}</div><div class="stat-label">连续打卡</div></div>
-        <div class="stat-card"><div class="stat-num">${c.mastered}</div><div class="stat-label">已掌握词</div></div>
-        <div class="stat-card"><div class="stat-num">${masteredPct}%</div><div class="stat-label">掌握率</div></div>
+        <div class="stat-card"><div class="stat-num">🔥 ${Store.data.streak.count || 0}</div><div class="stat-label">连续打卡（天）</div></div>
+        <div class="stat-card"><div class="stat-num">${learnedToday}</div><div class="stat-label">今日已学</div></div>
+        <div class="stat-card"><div class="stat-num">${totalStudied}</div><div class="stat-label">累计学习次数</div></div>
+        <div class="stat-card"><div class="stat-num">${activeDays}</div><div class="stat-label">学习天数</div></div>
+      </section>
+
+      <section class="card">
+        <div class="card-row"><b>学习日历</b><span class="muted small">近 12 周</span></div>
+        <div class="heatmap">${this.calendarHeatmap(daily)}</div>
+        <div class="heat-legend"><span>少</span><i class="heat-cell heat-l0"></i><i class="heat-cell heat-l1"></i><i class="heat-cell heat-l2"></i><i class="heat-cell heat-l3"></i><i class="heat-cell heat-l4"></i><span>多</span></div>
+      </section>
+
+      <section class="card">
+        <div class="card-row"><b>未来复习预测</b><span class="muted small">待复习词量</span></div>
+        <div class="chart forecast">${this.reviewForecast()}</div>
       </section>
 
       <section class="card">
         <div class="card-row"><b>近 14 天学习量</b></div>
         <div class="chart">${bars}</div>
       </section>
-
-      <section class="card">
-        <div class="card-row"><b>掌握进度</b></div>
-        <div class="stack-bar">
-          <div class="seg seg-mastered" style="width:${this.pctOf(c.mastered, c.total)}%"></div>
-          <div class="seg seg-review" style="width:${this.pctOf(c.review, c.total)}%"></div>
-          <div class="seg seg-learning" style="width:${this.pctOf(c.learning, c.total)}%"></div>
-          <div class="seg seg-new" style="width:${this.pctOf(c.untouched, c.total)}%"></div>
-        </div>
-        <div class="legend">
-          <span><i class="dot seg-mastered"></i>已掌握 ${c.mastered}</span>
-          <span><i class="dot seg-review"></i>复习中 ${c.review}</span>
-          <span><i class="dot seg-learning"></i>学习中 ${c.learning}</span>
-          <span><i class="dot seg-new"></i>未学习 ${c.untouched}</span>
-        </div>
-      </section>
     `;
+  },
+
+  // 掌握环形图（SVG donut），中心显示掌握率
+  masteryDonut(c) {
+    const total = c.total || 1;
+    const segs = [
+      { v: c.mastered, color: "var(--mastered)" },
+      { v: c.review, color: "var(--review)" },
+      { v: c.learning, color: "var(--learning)" },
+      { v: c.untouched, color: "var(--new)" },
+    ];
+    const r = 54, C = 2 * Math.PI * r;
+    let offset = 0;
+    const arcs = segs.map(s => {
+      const len = (s.v / total) * C;
+      const el = `<circle cx="70" cy="70" r="${r}" fill="none" stroke="${s.color}" stroke-width="15" stroke-linecap="butt" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 70 70)"/>`;
+      offset += len;
+      return el;
+    }).join("");
+    const pct = c.total ? Math.round((c.mastered / c.total) * 100) : 0;
+    return `<svg viewBox="0 0 140 140" class="donut">
+      <circle cx="70" cy="70" r="${r}" fill="none" stroke="var(--line)" stroke-width="15"/>
+      ${arcs}
+      <text x="70" y="66" text-anchor="middle" class="donut-num">${pct}%</text>
+      <text x="70" y="88" text-anchor="middle" class="donut-lbl">掌握率</text>
+    </svg>`;
+  },
+
+  // 学习日历热力图（近 12 周，GitHub 贡献图风格）
+  calendarHeatmap(daily) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const totalDays = 12 * 7;
+    const start = new Date(today);
+    start.setDate(start.getDate() - (totalDays - 1));
+    start.setDate(start.getDate() - start.getDay()); // 对齐到周日
+    const level = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 20 ? 3 : 4;
+    const key = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    let html = "";
+    const cur = new Date(start);
+    while (cur <= today) {
+      const n = (daily[key(cur)] || {}).studied || 0;
+      html += `<div class="heat-cell heat-l${level(n)}" title="${key(cur)}: ${n} 次"></div>`;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return html;
+  },
+
+  // 未来 7 天待复习词量预测
+  reviewForecast() {
+    const now = Date.now(), DAY = 86400000;
+    const buckets = new Array(8).fill(0); // 0=今天/逾期, 1..7=未来天
+    const prog = Store.data.progress || {};
+    for (const w in prog) {
+      const st = prog[w];
+      if (!st || !st.due || st.status === "new") continue;
+      const d = Math.ceil((st.due - now) / DAY);
+      if (d <= 0) buckets[0]++;
+      else if (d <= 7) buckets[d]++;
+    }
+    const labels = ["今天", "+1", "+2", "+3", "+4", "+5", "+6", "+7"];
+    const max = Math.max(1, ...buckets);
+    return buckets.map((v, i) =>
+      `<div class="bar-col"><div class="bar-n">${v || ""}</div><div class="bar bar-f" style="height:${v ? Math.max(6, Math.round(v / max * 100)) : 2}%"></div><div class="bar-x">${labels[i]}</div></div>`
+    ).join("");
   },
 
   /* ---------------- 词库页 ---------------- */
