@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>墨记单词 · 我的背单词</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部栏 -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">墨</span>
+        <span class="brand-name">墨记单词</span>
+      </div>
+      <div class="streak" id="streak" title="连续打卡天数">🔥 <span id="streakDays">0</span></div>
+    </header>
+
+    <!-- 主内容区，各页面切换 -->
+    <main id="main"></main>
+
+    <!-- 底部导航 -->
+    <nav class="tabbar">
+      <button class="tab active" data-view="home">
+        <span class="ic">🏠</span><span>首页</span>
+      </button>
+      <button class="tab" data-view="study">
+        <span class="ic">📖</span><span>学习</span>
+      </button>
+      <button class="tab" data-view="stats">
+        <span class="ic">📊</span><span>统计</span>
+      </button>
+      <button class="tab" data-view="library">
+        <span class="ic">📚</span><span>词库</span>
+      </button>
+    </nav>
+  </div>
+
+  <script src="data/words.js"></script>
+  <script src="js/srs.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
