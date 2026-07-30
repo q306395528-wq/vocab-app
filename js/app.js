@@ -5,6 +5,7 @@ const App = {
 
   speechVoices: [],
   currentVoice: null,
+  ttsWorker: "https://vocab-tts.q306395528.workers.dev",
 
   init() {
     Store.load();
@@ -408,7 +409,7 @@ const App = {
       <section class="card">
         <div class="card-row"><b>发音</b><button class="btn-mini" id="voiceTest">试听 🔊</button></div>
         <label class="switch-row">
-          <span>单词在线发音（更自然，需联网）<br><span class="muted small">单词用有道美音，失败自动回退本地语音；例句仍用本地语音</span></span>
+          <span>在线发音（更自然，需联网）<br><span class="muted small">单词用有道美音、例句用在线 TTS，失败自动回退本地语音</span></span>
           <input type="checkbox" id="onlineTTS" ${st.onlineTTS !== false ? "checked" : ""} />
         </label>
 
@@ -419,7 +420,7 @@ const App = {
         <div class="card-row" style="margin-top:14px"><span>本地语速</span><span class="muted rate-label">${(st.speechRate || 0.95).toFixed(2)}×</span></div>
         <input type="range" id="speechRate" min="0.6" max="1.2" step="0.05" value="${st.speechRate || 0.95}" class="slider" />
         <div class="range-label"><span>慢</span><span>快</span></div>
-        <p class="muted small" style="margin:10px 0 0">iPhone 提示：单词开在线发音即较自然。整句在线发音免费源都会被浏览器拦，需自建代理（Cloudflare Worker）才行。本地语音里 Safari 只能用「基础」嗓音，<b>下载的「增强」Siri 语音无法被网页调用</b>（苹果限制）。</p>
+        <p class="muted small" style="margin:10px 0 0">在线发音已接入自建 Cloudflare Worker 代理（免费），单词和例句都能自然发音；断网或失败时自动用下面的本地语音。iPhone 本地语音只能用「基础」嗓音，下载的「增强」Siri 语音网页无法调用（苹果限制）。</p>
       </section>
 
       <section class="card">
@@ -569,14 +570,18 @@ const App = {
     const online = Store.data.settings.onlineTTS !== false && navigator.onLine !== false;
     if (!online) { this.speakLocal(t); return; }
 
-    // 整句：免费的在线整句发音（Google 等）都会被浏览器按 Referer 拦掉，直接用本地语音
+    const worker = this.ttsWorker ? `${this.ttsWorker}/?text=${encodeURIComponent(t)}` : null;
     const words = t.split(/\s+/);
     const isSentence = /[.!?;:]$/.test(t) || words.length > 4;
-    if (isSentence) { this.speakLocal(t); return; }
 
-    // 单词/短语：有道美音（浏览器可直连），失败回退本地
-    const youdao = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(t)}&type=2`;
-    this.playChain([youdao], () => this.speakLocal(t));
+    if (isSentence) {
+      // 整句：走 Worker（服务端代理 Google，自然发音），失败回退本地
+      this.playChain(worker ? [worker] : [], () => this.speakLocal(t));
+    } else {
+      // 单词/短语：有道美音（最快），失败退 Worker，再退本地
+      const youdao = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(t)}&type=2`;
+      this.playChain(worker ? [youdao, worker] : [youdao], () => this.speakLocal(t));
+    }
   },
 
   // 依次尝试若干音频地址，都失败则调用 fallback
