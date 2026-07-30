@@ -6,13 +6,19 @@ const App = {
   speechVoices: [],
   currentVoice: null,
   ttsWorker: "https://vocab-tts.q306395528.workers.dev",
+  apiBase: "https://vocab-api.q306395528.workers.dev",
+  AUTH_KEY: "momo_vocab_auth",
+  auth: { token: null, username: null },
 
   init() {
     Store.load();
+    this.loadAuth();
+    Store.onSave = () => this.scheduleSync();   // 任何本地保存都触发防抖云同步
     this.initVoices();
     this.bindNav();
     this.renderStreak();
     this.render();
+    if (this.auth.token) this.syncPull().catch(() => {});  // 登录状态下启动时拉取并合并
   },
 
   // 载入系统语音，挑选最自然的英语嗓音（默认嗓音常常最机械，需要主动选）
@@ -512,6 +518,28 @@ const App = {
     return `
       <h2 class="page-title">词库与设置</h2>
 
+      ${this.auth.token ? `
+      <section class="card">
+        <div class="card-row"><b>账号</b><span class="muted">已登录 · ${this.esc(this.auth.username)}</span></div>
+        <p class="muted small" style="margin:0 0 12px">学习进度已自动同步到云端，换设备登录同一账号即可继续。</p>
+        <div class="auth-actions">
+          <button class="btn-primary" id="syncNow">立即同步</button>
+          <button class="btn-ghost" id="logoutBtn">退出登录</button>
+        </div>
+        <span id="authMsg" class="muted small"></span>
+      </section>` : `
+      <section class="card">
+        <div class="card-row"><b>登录 / 注册</b><span class="muted small">同步进度到云端</span></div>
+        <p class="muted small" style="margin:0 0 12px">登录后学习进度自动云同步，可在手机、电脑间无缝切换。</p>
+        <input id="authUser" class="voice-sel" placeholder="用户名（3-30 位字母/数字/下划线）" autocomplete="username" autocapitalize="none" />
+        <input id="authPass" type="password" class="voice-sel" style="margin-top:8px" placeholder="密码（至少 6 位）" autocomplete="current-password" />
+        <div class="auth-actions" style="margin-top:12px">
+          <button class="btn-primary" id="loginBtn">登录</button>
+          <button class="btn-mini" id="registerBtn">注册新账号</button>
+        </div>
+        <span id="authMsg" class="muted small"></span>
+      </section>`}
+
       <section class="card">
         <div class="card-row"><b>每日新词量</b><span class="muted daily-label">${st.dailyNew} 个/天</span></div>
         <input type="range" id="dailyNew" min="5" max="50" step="5" value="${st.dailyNew}" class="slider" />
@@ -631,6 +659,11 @@ const App = {
     };
     if ($("speechRate")) $("speechRate").onchange = () => this.speak("natural");
 
+    if ($("loginBtn")) $("loginBtn").onclick = () => this.doAuth("login");
+    if ($("registerBtn")) $("registerBtn").onclick = () => this.doAuth("register");
+    if ($("syncNow")) $("syncNow").onclick = () => this.syncPull();
+    if ($("logoutBtn")) $("logoutBtn").onclick = () => { if (confirm("退出登录？本地进度会保留。")) this.logout(); };
+
     if ($("importBtn")) $("importBtn").onclick = () => this.doImport();
     if ($("resetBtn")) $("resetBtn").onclick = () => {
       if (confirm("确定清空所有数据吗？此操作不可恢复。")) {
@@ -673,6 +706,107 @@ const App = {
   },
 
   /* ---------------- 工具 ---------------- */
+  /* ---------------- 账号 / 云同步 ---------------- */
+  loadAuth() {
+    try { this.auth = JSON.parse(localStorage.getItem(this.AUTH_KEY)) || { token: null, username: null }; }
+    catch (e) { this.auth = { token: null, username: null }; }
+  },
+  saveAuth() { localStorage.setItem(this.AUTH_KEY, JSON.stringify(this.auth)); },
+
+  apiFetch(path, opts = {}) {
+    const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+    if (this.auth.token) headers["Authorization"] = "Bearer " + this.auth.token;
+    return fetch(this.apiBase + path, { ...opts, headers });
+  },
+
+  async doAuth(mode) {
+    const u = (document.getElementById("authUser").value || "").trim();
+    const p = document.getElementById("authPass").value || "";
+    const msg = document.getElementById("authMsg");
+    if (!u || !p) { msg.textContent = "请输入用户名和密码"; return; }
+    msg.textContent = mode === "register" ? "注册中…" : "登录中…";
+    try {
+      const res = await this.apiFetch("/" + mode, { method: "POST", body: JSON.stringify({ username: u, password: p }) });
+      const j = await res.json();
+      if (!res.ok) { msg.textContent = j.error || "失败"; return; }
+      this.auth = { token: j.token, username: j.username };
+      this.saveAuth();
+      msg.textContent = "同步中…";
+      await this.syncPull();
+    } catch (e) { msg.textContent = "网络错误，请重试"; }
+  },
+
+  logout() {
+    this.auth = { token: null, username: null };
+    this.saveAuth();
+    this.render();
+  },
+
+  // 拉取云端并与本地合并，再回推（双向合并，避免任一端丢数据）
+  async syncPull() {
+    if (!this.auth.token) return;
+    const res = await this.apiFetch("/data", { method: "GET" });
+    if (res.status === 401) { this.logout(); return; }
+    if (!res.ok) return;
+    const { data } = await res.json();
+    const merged = this.mergeData(Store.exportData(), data);
+    Store.importMerged(merged);       // 会触发 onSave→scheduleSync 回推
+    this.renderStreak();
+    this.render();
+    const msg = document.getElementById("authMsg");
+    if (msg) msg.textContent = "已同步 " + new Date().toLocaleTimeString();
+  },
+
+  async syncPush() {
+    if (!this.auth.token) return;
+    try {
+      const res = await this.apiFetch("/data", { method: "PUT", body: JSON.stringify({ data: Store.exportData() }) });
+      if (res.status === 401) this.logout();
+    } catch (e) { /* 离线则忽略，下次再推 */ }
+  },
+
+  scheduleSync() {
+    if (!this.auth.token) return;
+    clearTimeout(this._syncTimer);
+    this._syncTimer = setTimeout(() => this.syncPush(), 2500);
+  },
+
+  // 合并本地与云端数据：进度取最近复习、每日取各项最大、连续取较大、自定义词取并集
+  mergeData(local, remote) {
+    if (!remote) return local;
+    const m = { ...local };
+
+    m.progress = { ...(remote.progress || {}) };
+    const lp = local.progress || {};
+    for (const w in lp) {
+      const a = lp[w], b = m.progress[w];
+      if (!b || (a.lastReview || 0) >= (b.lastReview || 0)) m.progress[w] = a;
+    }
+
+    m.daily = { ...(remote.daily || {}) };
+    const ld = local.daily || {};
+    for (const d in ld) {
+      const a = ld[d], b = m.daily[d] || {};
+      m.daily[d] = {
+        studied: Math.max(a.studied || 0, b.studied || 0),
+        newLearned: Math.max(a.newLearned || 0, b.newLearned || 0),
+        reviewed: Math.max(a.reviewed || 0, b.reviewed || 0),
+      };
+    }
+
+    const ls = local.streak || { count: 0 }, rs = remote.streak || { count: 0 };
+    m.streak = (ls.count || 0) >= (rs.count || 0) ? ls : rs;
+
+    const cw = {};
+    (remote.customWords || []).forEach(w => cw[w.word] = w);
+    (local.customWords || []).forEach(w => cw[w.word] = w);
+    m.customWords = Object.values(cw);
+
+    m.settings = { ...(remote.settings || {}), ...(local.settings || {}) };
+    m.createdAt = Math.min(local.createdAt || Date.now(), remote.createdAt || Date.now());
+    return m;
+  },
+
   // 发音入口：优先在线（更自然），失败自动回退本地语音
   //   单词/短语 → 有道 dictvoice(美音)，再退 Google
   //   句子     → Google 翻译 TTS

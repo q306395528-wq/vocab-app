@@ -35,6 +35,28 @@ const Store = {
     } catch (e) {
       console.error("保存失败", e);
     }
+    if (typeof this.onSave === "function") { try { this.onSave(); } catch (e) {} }
+  },
+
+  // 导出可同步的数据（不含进行中的 session）
+  exportData() {
+    const d = this.data;
+    return {
+      progress: d.progress, daily: d.daily, streak: d.streak,
+      customWords: d.customWords, settings: d.settings, createdAt: d.createdAt
+    };
+  },
+
+  // 用合并后的数据覆盖本地并保存
+  importMerged(m) {
+    if (!m) return;
+    this.data.progress = m.progress || {};
+    this.data.daily = m.daily || {};
+    this.data.streak = m.streak || this.data.streak;
+    this.data.customWords = m.customWords || [];
+    this.data.settings = { ...this.data.settings, ...(m.settings || {}) };
+    this.data.createdAt = m.createdAt || this.data.createdAt;
+    this.save();
   },
 
   // 全部单词 = 内置词库 + 自定义词，按 word 去重（自定义优先）

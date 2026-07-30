@@ -1,0 +1,7 @@
+name = "vocab-api"
+main = "index.js"
+compatibility_date = "2024-11-01"
+
+[[kv_namespaces]]
+binding = "VOCAB_KV"
+id = "2d213d6e8a604bb68609cc2aa9952103"
