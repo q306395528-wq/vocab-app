@@ -93,6 +93,7 @@ const App = {
     const main = document.getElementById("main");
     main.scrollTop = 0;
     document.body.classList.toggle("study-mode", this.view === "study");
+    if (this.view !== "study") document.body.classList.remove("recall-mode");
     if (this.view === "home") main.innerHTML = this.renderHome();
     else if (this.view === "study") this.renderStudy(main);
     else if (this.view === "stats") main.innerHTML = this.renderStats();
@@ -183,9 +184,13 @@ const App = {
           <button class="btn-ghost" id="homeBtn">回首页</button>
         </div>`;
       this.session = null;
+      document.body.classList.remove("recall-mode");
       this.afterRender();
       return;
     }
+
+    // 回忆页（未翻开）锁定滚动；翻开后内容可能超屏，恢复滚动
+    document.body.classList.toggle("recall-mode", !s.revealed);
 
     const word = s.queue[s.index];
     const prev = Store.getState(word.word);
@@ -224,7 +229,7 @@ const App = {
           <div class="action-spacer"></div>
         </div>
 
-        ${s.revealed ? "" : `<div class="recall-hint">轻点屏幕查看释义并朗读</div>`}
+        ${s.revealed ? "" : `<div class="recall-hint">点空白处查看释义 · 点单词或音标可发音</div>`}
       </div>
 
       ${s.revealed ? `<div class="actions">${this.gradeButtons(st)}</div>` : ""}
@@ -464,17 +469,19 @@ const App = {
     document.querySelectorAll(".ex-speak").forEach(b => {
       b.onclick = (e) => { e.stopPropagation(); this.speak(b.dataset.speak); };
     });
-    // 翻开后：点单词 / 音标 / 例句本身都能发音
-    if (this.view === "study" && this.session && this.session.revealed) {
+    // 点单词 / 音标 / 例句都能发音；回忆页点单词或音标只发音、不翻卡（阻止冒泡到翻卡监听）
+    if (this.view === "study" && this.session) {
       const cur = this.session.queue[this.session.index];
-      const wm = document.querySelector(".word-main");
-      const pl = document.querySelector(".phon-line");
-      if (wm) wm.onclick = (e) => { e.stopPropagation(); this.speak(cur.word); };
-      if (pl) pl.onclick = (e) => { e.stopPropagation(); this.speak(cur.word); };
-      document.querySelectorAll(".ex-en").forEach(row => {
-        const btn = row.querySelector(".ex-speak");
-        row.onclick = () => this.speak(btn ? btn.dataset.speak : row.textContent);
-      });
+      if (cur) {
+        const wm = document.querySelector(".word-main");
+        const pl = document.querySelector(".phon-line");
+        if (wm) wm.onclick = (e) => { e.stopPropagation(); this.speak(cur.word); };
+        if (pl) pl.onclick = (e) => { e.stopPropagation(); this.speak(cur.word); };
+        document.querySelectorAll(".ex-en").forEach(row => {
+          const btn = row.querySelector(".ex-speak");
+          row.onclick = () => this.speak(btn ? btn.dataset.speak : row.textContent);
+        });
+      }
     }
     if ($("againBtn")) $("againBtn").onclick = () => { this.session = null; this.render(); };
     if ($("homeBtn")) $("homeBtn").onclick = () => this.switchTo("home");
