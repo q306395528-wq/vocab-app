@@ -9,6 +9,7 @@ const Store = {
       customWords: [],       // 用户导入的自定义单词
       daily: {},             // "YYYY-MM-DD" -> { studied, newLearned, reviewed }
       streak: { count: 0, lastDay: null },
+      session: null,         // 当前进行中的学习会话（顺序+进度），用于跨越话次恢复
       createdAt: Date.now()
     };
   },

@@ -148,28 +148,66 @@ const App = {
   /* ---------------- 学习页 ---------------- */
   renderStudy(main) {
     if (!this.session) {
-      const q = Store.getQueue();
-      const words = [...q.review, ...q.newWords];
-      if (words.length === 0) {
-        main.innerHTML = `
-          <div class="empty">
-            <div class="empty-emoji">🎉</div>
-            <div class="empty-title">今日任务已完成</div>
-            <p class="muted">明天再来，或去「词库」调整每日新词量。</p>
-          </div>`;
-        return;
+      // 优先恢复上次未完成的会话（保持原有顺序与进度，不重新洗牌）
+      this.session = this.loadSession();
+      if (!this.session) {
+        const q = Store.getQueue();
+        const words = [...q.review, ...q.newWords];
+        if (words.length === 0) {
+          main.innerHTML = `
+            <div class="empty">
+              <div class="empty-emoji">🎉</div>
+              <div class="empty-title">今日任务已完成</div>
+              <p class="muted">明天再来，或去「词库」调整每日新词量。</p>
+            </div>`;
+          return;
+        }
+        this.session = {
+          queue: this.shuffle(words),   // 本轮工作队列（模糊/忘记会把词重新塞回队列）
+          index: 0,
+          revealed: false,
+          total: words.length,          // 本轮不同单词数
+          passed: new Set(),            // 已点“认识”通过的词
+          newSet: new Set(q.newWords.map(w => w.word)), // 本轮的新词
+          taps: 0
+        };
+        this.saveSession();
       }
-      this.session = {
-        queue: this.shuffle(words),   // 本轮工作队列（模糊/忘记会把词重新塞回队列）
-        index: 0,
-        revealed: false,
-        total: words.length,          // 本轮不同单词数
-        passed: new Set(),            // 已点“认识”通过的词
-        newSet: new Set(q.newWords.map(w => w.word)), // 本轮的新词
-        taps: 0
-      };
     }
     this.renderCard(main);
+  },
+
+  // 会话持久化：让「学习」页跨越话次恢复同一顺序与进度，而不是每次重新随机
+  saveSession() {
+    const s = this.session;
+    Store.data.session = s ? {
+      date: Store.today(),
+      queue: s.queue.map(w => w.word),
+      index: s.index,
+      total: s.total,
+      passed: [...s.passed],
+      newSet: [...s.newSet],
+      taps: s.taps
+    } : null;
+    Store.save();
+  },
+
+  loadSession() {
+    const s = Store.data.session;
+    if (!s || s.date !== Store.today()) return null;
+    const map = {};
+    for (const w of Store.allWords()) map[w.word] = w;
+    const queue = (s.queue || []).map(w => map[w]).filter(Boolean);
+    if (!queue.length || (s.index || 0) >= queue.length) return null;
+    return {
+      queue,
+      index: s.index || 0,
+      revealed: false,
+      total: s.total || queue.length,
+      passed: new Set(s.passed || []),
+      newSet: new Set(s.newSet || []),
+      taps: s.taps || 0
+    };
   },
 
   renderCard(main) {
@@ -185,6 +223,7 @@ const App = {
           <button class="btn-ghost" id="homeBtn">回首页</button>
         </div>`;
       this.session = null;
+      this.saveSession();               // 完成后清除已保存会话
       document.body.classList.remove("recall-mode");
       this.afterRender();
       return;
@@ -326,6 +365,7 @@ const App = {
 
     s.index += 1;
     s.revealed = false;
+    this.saveSession();               // 持久化进度，跨越话次可恢复
     this.renderStreak();
     this.renderCard(document.getElementById("main"));
   },
