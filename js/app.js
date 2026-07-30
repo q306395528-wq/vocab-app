@@ -15,19 +15,40 @@ const App = {
   },
 
   // 载入系统语音，挑选最自然的英语嗓音（默认嗓音常常最机械，需要主动选）
+  // iOS Safari 的语音是异步加载的，且往往要先发生一次朗读才会齐全，所以要在变化时刷新
   initVoices() {
     const pick = () => {
       const all = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+      const prevCount = this.speechVoices.length;
       this.speechVoices = all.filter(v => /^en/i.test(v.lang));
       const saved = Store.data.settings.voiceName;
       let chosen = saved && this.speechVoices.find(v => v.name === saved);
       if (!chosen) chosen = this.bestVoice(this.speechVoices);
-      this.currentVoice = chosen || null;
+      this.currentVoice = chosen || this.currentVoice || null;
+      // 语音列表变化后，如果正停留在设置页，刷新下拉框
+      if (this.speechVoices.length !== prevCount && this.view === "library") this.render();
     };
     pick();
     if (window.speechSynthesis && speechSynthesis.onvoiceschanged !== undefined) {
       speechSynthesis.onvoiceschanged = pick;
     }
+  },
+
+  // 手动刷新语音列表（iOS 上语音常在首次朗读后才出现）
+  reloadVoices() {
+    try { speechSynthesis.getVoices(); } catch (e) {}
+    // 触发一次极短朗读来“唤醒”语音引擎，然后稍后重新读取列表
+    try {
+      const u = new SpeechSynthesisUtterance(" ");
+      u.volume = 0; speechSynthesis.speak(u);
+    } catch (e) {}
+    setTimeout(() => {
+      const all = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+      this.speechVoices = all.filter(v => /^en/i.test(v.lang));
+      const saved = Store.data.settings.voiceName;
+      this.currentVoice = (saved && this.speechVoices.find(v => v.name === saved)) || this.bestVoice(this.speechVoices) || this.currentVoice;
+      if (this.view === "library") this.render();
+    }, 400);
   },
 
   // 给英语嗓音打分：优先高品质/自然嗓音，排除系统里的“搞怪/机械”嗓音
@@ -220,7 +241,10 @@ const App = {
     if (!list.length) return "";
     const items = list.map(e => `
       <div class="ex">
-        <div class="ex-en">${this.highlight(e.en, word.word)}</div>
+        <div class="ex-en">
+          <button class="ex-speak" data-speak="${this.esc(e.en)}" title="朗读例句">🔊</button>
+          <span class="ex-text">${this.highlight(e.en, word.word)}</span>
+        </div>
         <div class="ex-zh">${this.esc(e.zh || "")}</div>
       </div>`).join("");
     return `<div class="section"><div class="section-head">例句</div>${items}</div>`;
@@ -377,14 +401,16 @@ const App = {
       </section>
 
       <section class="card">
-        <div class="card-row"><b>发音</b><button class="btn-mini" id="voiceTest">试听 🔊</button></div>
+        <div class="card-row"><b>发音（共 ${this.speechVoices.length} 个可用）</b>
+          <span><button class="btn-mini" id="voiceRefresh">刷新</button> <button class="btn-mini" id="voiceTest">试听 🔊</button></span>
+        </div>
         ${this.speechVoices.length
           ? `<select id="voiceSel" class="voice-sel">${this.voiceOptions()}</select>`
-          : `<p class="muted small">当前浏览器未提供可选嗓音，将使用系统默认英语发音。</p>`}
+          : `<p class="muted small">暂未读取到可选嗓音。请先点上面「试听」发一次声，再点「刷新」。</p>`}
         <div class="card-row" style="margin-top:14px"><span>语速</span><span class="muted rate-label">${(st.speechRate || 0.95).toFixed(2)}×</span></div>
         <input type="range" id="speechRate" min="0.6" max="1.2" step="0.05" value="${st.speechRate || 0.95}" class="slider" />
         <div class="range-label"><span>慢</span><span>快</span></div>
-        <p class="muted small" style="margin:10px 0 0">想要更真人的发音：在系统设置里下载「增强/优质(Premium)」英语语音后，这里会自动出现更自然的选项。</p>
+        <p class="muted small" style="margin:10px 0 0">iPhone 提示：Safari 网页只能用系统「基础」语音，<b>下载的「增强/优质」Siri 语音无法在网页中调用</b>（这是苹果的限制，非本站问题）。若列表为空，先「试听」再「刷新」即可。</p>
       </section>
 
       <section class="card">
@@ -430,6 +456,10 @@ const App = {
     }
     // 🔊 单独响应，且不触发翻卡
     if ($("speakBtn")) $("speakBtn").onclick = (e) => { e.stopPropagation(); this.speak(this.session.queue[this.session.index].word); };
+    // 例句朗读
+    document.querySelectorAll(".ex-speak").forEach(b => {
+      b.onclick = (e) => { e.stopPropagation(); this.speak(b.dataset.speak); };
+    });
     if ($("againBtn")) $("againBtn").onclick = () => { this.session = null; this.render(); };
     if ($("homeBtn")) $("homeBtn").onclick = () => this.switchTo("home");
 
@@ -451,6 +481,7 @@ const App = {
       this.speak("natural");
     };
     if ($("voiceTest")) $("voiceTest").onclick = () => this.speak("Hello, this is a natural voice.");
+    if ($("voiceRefresh")) $("voiceRefresh").onclick = () => this.reloadVoices();
     if ($("speechRate")) $("speechRate").oninput = (e) => {
       Store.data.settings.speechRate = Number(e.target.value);
       Store.save();

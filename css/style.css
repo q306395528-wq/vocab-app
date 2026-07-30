@@ -148,8 +148,12 @@ body.study-mode main { padding-top: 16px; }
 .section-head { color: var(--muted); font-size: 12px; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase; }
 .ex { margin-bottom: 15px; }
 .ex:last-child { margin-bottom: 0; }
-.ex-en { font-size: 16px; line-height: 1.65; color: #dcdce0; }
+.ex-en { font-size: 16px; line-height: 1.65; color: #dcdce0; display: flex; align-items: baseline; gap: 8px; }
 .ex-en .hl { color: var(--accent); }
+.ex-speak { flex: 0 0 auto; background: transparent; border: none; color: var(--accent); font-size: 15px; cursor: pointer; padding: 0; line-height: 1; position: relative; top: 2px; }
+.ex-speak:active { opacity: .5; }
+.ex-text { flex: 1; }
+.ex-zh { margin-left: 23px; }
 .ex-zh { font-size: 14px; color: var(--muted); margin-top: 4px; }
 .mne-note { font-size: 15px; color: #dcdce0; margin: 0; line-height: 1.7; }
 
