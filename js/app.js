@@ -401,16 +401,20 @@ const App = {
       </section>
 
       <section class="card">
-        <div class="card-row"><b>发音（共 ${this.speechVoices.length} 个可用）</b>
-          <span><button class="btn-mini" id="voiceRefresh">刷新</button> <button class="btn-mini" id="voiceTest">试听 🔊</button></span>
-        </div>
+        <div class="card-row"><b>发音</b><button class="btn-mini" id="voiceTest">试听 🔊</button></div>
+        <label class="switch-row">
+          <span>单词在线发音（更自然，需联网）<br><span class="muted small">单词用有道美音，失败自动回退本地语音；例句仍用本地语音</span></span>
+          <input type="checkbox" id="onlineTTS" ${st.onlineTTS !== false ? "checked" : ""} />
+        </label>
+
+        <div class="card-row" style="margin-top:16px"><b class="muted small">本地语音（离线备用）</b><button class="btn-mini" id="voiceRefresh">刷新</button></div>
         ${this.speechVoices.length
           ? `<select id="voiceSel" class="voice-sel">${this.voiceOptions()}</select>`
-          : `<p class="muted small">暂未读取到可选嗓音。请先点上面「试听」发一次声，再点「刷新」。</p>`}
-        <div class="card-row" style="margin-top:14px"><span>语速</span><span class="muted rate-label">${(st.speechRate || 0.95).toFixed(2)}×</span></div>
+          : `<p class="muted small">暂未读取到可选嗓音。先点「试听」发一次声，再点「刷新」。</p>`}
+        <div class="card-row" style="margin-top:14px"><span>本地语速</span><span class="muted rate-label">${(st.speechRate || 0.95).toFixed(2)}×</span></div>
         <input type="range" id="speechRate" min="0.6" max="1.2" step="0.05" value="${st.speechRate || 0.95}" class="slider" />
         <div class="range-label"><span>慢</span><span>快</span></div>
-        <p class="muted small" style="margin:10px 0 0">iPhone 提示：Safari 网页只能用系统「基础」语音，<b>下载的「增强/优质」Siri 语音无法在网页中调用</b>（这是苹果的限制，非本站问题）。若列表为空，先「试听」再「刷新」即可。</p>
+        <p class="muted small" style="margin:10px 0 0">iPhone 提示：单词开在线发音即较自然。整句在线发音免费源都会被浏览器拦，需自建代理（Cloudflare Worker）才行。本地语音里 Safari 只能用「基础」嗓音，<b>下载的「增强」Siri 语音无法被网页调用</b>（苹果限制）。</p>
       </section>
 
       <section class="card">
@@ -482,6 +486,11 @@ const App = {
     };
     if ($("voiceTest")) $("voiceTest").onclick = () => this.speak("Hello, this is a natural voice.");
     if ($("voiceRefresh")) $("voiceRefresh").onclick = () => this.reloadVoices();
+    if ($("onlineTTS")) $("onlineTTS").onchange = (e) => {
+      Store.data.settings.onlineTTS = e.target.checked;
+      Store.save();
+      this.speak("natural");
+    };
     if ($("speechRate")) $("speechRate").oninput = (e) => {
       Store.data.settings.speechRate = Number(e.target.value);
       Store.save();
@@ -532,9 +541,45 @@ const App = {
   },
 
   /* ---------------- 工具 ---------------- */
-  speak(word) {
+  // 发音入口：优先在线（更自然），失败自动回退本地语音
+  //   单词/短语 → 有道 dictvoice(美音)，再退 Google
+  //   句子     → Google 翻译 TTS
+  speak(text) {
+    const t = String(text == null ? "" : text).trim();
+    if (!t) return;
+    const online = Store.data.settings.onlineTTS !== false && navigator.onLine !== false;
+    if (!online) { this.speakLocal(t); return; }
+
+    // 整句：免费的在线整句发音（Google 等）都会被浏览器按 Referer 拦掉，直接用本地语音
+    const words = t.split(/\s+/);
+    const isSentence = /[.!?;:]$/.test(t) || words.length > 4;
+    if (isSentence) { this.speakLocal(t); return; }
+
+    // 单词/短语：有道美音（浏览器可直连），失败回退本地
+    const youdao = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(t)}&type=2`;
+    this.playChain([youdao], () => this.speakLocal(t));
+  },
+
+  // 依次尝试若干音频地址，都失败则调用 fallback
+  playChain(urls, fallback) {
+    try { speechSynthesis.cancel(); } catch (e) {}
+    if (this._audio) { try { this._audio.pause(); } catch (e) {} this._audio = null; }
+    let i = 0;
+    const tryNext = () => {
+      if (i >= urls.length) { if (fallback) fallback(); return; }
+      const audio = new Audio(urls[i++]);
+      this._audio = audio;
+      audio.onerror = tryNext;
+      const p = audio.play();
+      if (p && p.catch) p.catch(tryNext);
+    };
+    tryNext();
+  },
+
+  // 本地语音合成（离线/在线失败时）
+  speakLocal(text) {
     try {
-      const u = new SpeechSynthesisUtterance(word);
+      const u = new SpeechSynthesisUtterance(text);
       if (this.currentVoice) { u.voice = this.currentVoice; u.lang = this.currentVoice.lang; }
       else u.lang = "en-US";
       u.rate = Store.data.settings.speechRate || 0.95;

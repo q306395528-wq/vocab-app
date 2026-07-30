@@ -4,7 +4,7 @@ const Store = {
 
   _defaults() {
     return {
-      settings: { dailyNew: 15, dailyReviewCap: 200, speechRate: 0.95, voiceName: "" },
+      settings: { dailyNew: 15, dailyReviewCap: 200, speechRate: 0.95, voiceName: "", onlineTTS: true },
       progress: {},          // word -> SRS state
       customWords: [],       // 用户导入的自定义单词
       daily: {},             // "YYYY-MM-DD" -> { studied, newLearned, reviewed }
