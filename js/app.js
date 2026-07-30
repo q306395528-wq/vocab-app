@@ -379,7 +379,7 @@ const App = {
     const bars = days.map(d => {
       const v = daily[d]?.studied || 0;
       const h = Math.round((v / max) * 100);
-      return `<div class="bar-col"><div class="bar" style="height:${Math.max(4, h)}%" title="${d}: ${v}"></div><div class="bar-x">${d.slice(5)}</div></div>`;
+      return `<div class="bar-col"><div class="bar" style="height:${Math.max(4, h)}%" title="${d}: ${v}"></div><div class="bar-x">${d.slice(8)}</div></div>`;
     }).join("");
 
     const totalStudied = Object.values(daily).reduce((a, b) => a + (b.studied || 0), 0);
