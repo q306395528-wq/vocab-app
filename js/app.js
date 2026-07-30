@@ -460,10 +460,22 @@ const App = {
     }
     // 🔊 单独响应，且不触发翻卡
     if ($("speakBtn")) $("speakBtn").onclick = (e) => { e.stopPropagation(); this.speak(this.session.queue[this.session.index].word); };
-    // 例句朗读
+    // 例句朗读：喇叭按钮 + 点击整句都可读
     document.querySelectorAll(".ex-speak").forEach(b => {
       b.onclick = (e) => { e.stopPropagation(); this.speak(b.dataset.speak); };
     });
+    // 翻开后：点单词 / 音标 / 例句本身都能发音
+    if (this.view === "study" && this.session && this.session.revealed) {
+      const cur = this.session.queue[this.session.index];
+      const wm = document.querySelector(".word-main");
+      const pl = document.querySelector(".phon-line");
+      if (wm) wm.onclick = (e) => { e.stopPropagation(); this.speak(cur.word); };
+      if (pl) pl.onclick = (e) => { e.stopPropagation(); this.speak(cur.word); };
+      document.querySelectorAll(".ex-en").forEach(row => {
+        const btn = row.querySelector(".ex-speak");
+        row.onclick = () => this.speak(btn ? btn.dataset.speak : row.textContent);
+      });
+    }
     if ($("againBtn")) $("againBtn").onclick = () => { this.session = null; this.render(); };
     if ($("homeBtn")) $("homeBtn").onclick = () => this.switchTo("home");
 
