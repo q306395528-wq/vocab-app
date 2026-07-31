@@ -521,48 +521,70 @@ const App = {
   },
 
   /* ---------------- 词库页 ---------------- */
-  /* ---------------- 词库（按分类分组）---------------- */
+  /* ---------------- 词库（一次一个，顶部展示当前词库）---------------- */
   renderLibrary() {
-    const cats = Store.categories();
-    const expand = this.expandedCat;
-    const cards = cats.map(cat => {
-      const pct = cat.total ? Math.round((cat.mastered / cat.total) * 100) : 0;
-      const isOpen = expand === cat.name;
-      const words = isOpen ? Store.allWords().filter(w => Store.category(w) === cat.name) : [];
-      const rows = words.slice(0, 200).map(w => {
-        const state = Store.getState(w.word);
-        const pct = !state || state.status === "new" ? "未学" : Math.round(SRS.proficiency(state) * 100) + "%";
-        const cn = state && state.counts ? state.counts : { know: 0, vague: 0, forget: 0 };
-        const tip = `认识 ${cn.know || 0} · 模糊 ${cn.vague || 0} · 忘记 ${cn.forget || 0}`;
-        return `<tr title="${tip}">
-          <td class="prof-cell">${this.proficiencyCircle(state)}</td>
-          <td><b>${this.esc(w.word)}</b><div class="muted small">${this.esc(w.meaning)}</div></td>
-          <td class="prof-pct muted small">${pct}</td>
-        </tr>`;
-      }).join("");
-      return `
-      <section class="card cat-card">
-        <div class="cat-head" data-cat="${this.esc(cat.name)}">
-          <div class="cat-info">
-            <div class="cat-name">${this.esc(cat.name)} <span class="muted small">${cat.total} 词</span></div>
-            <div class="cat-sub muted small">已掌握 ${cat.mastered} · 学习中 ${cat.learning}</div>
-            <div class="progress cat-prog"><div class="progress-fill" style="width:${pct}%"></div></div>
-          </div>
-          <label class="cat-toggle" title="是否加入学习">
-            <input type="checkbox" class="catChk" data-cat="${this.esc(cat.name)}" ${cat.active ? "checked" : ""} />
-            <span>学习</span>
-          </label>
+    const cats = Store.allCategories();
+    const active = Store.activeCategory();
+    const { total, levels: L } = Store.categoryStats(active);
+    const t = total || 1;
+    const q = Store.getQueue();
+    const learned = total - L.unlearned;
+    const seg = (n, cls) => n > 0 ? `<div class="seg ${cls}" style="width:${(n / t * 100)}%"></div>` : "";
+    const isOpen = this.expandedCat === active;
+
+    const curCard = `
+      <section class="card book-cur">
+        <div class="bc-top">
+          <div class="bc-title">${this.esc(active)}</div>
+          <span class="bc-badge">正在学习</span>
         </div>
-        <button class="cat-expand" data-cat="${this.esc(cat.name)}">${isOpen ? "收起单词 ▲" : "查看单词 ▼"}</button>
-        ${isOpen ? `<table class="wordtable">${rows}</table>${words.length > 200 ? `<p class="muted small center">仅显示前 200 个</p>` : ""}` : ""}
+        <div class="lvl-bar">
+          ${seg(L.mature, "lv-mature")}${seg(L.familiar, "lv-familiar")}${seg(L.normal, "lv-normal")}${seg(L.unfamiliar, "lv-unfamiliar")}${seg(L.unlearned, "lv-unlearned")}
+        </div>
+        <div class="lvl-legend">
+          <span><i class="dot lv-mature"></i>标熟 ${L.mature}</span>
+          <span><i class="dot lv-familiar"></i>熟悉 ${L.familiar}</span>
+          <span><i class="dot lv-normal"></i>一般 ${L.normal}</span>
+          <span><i class="dot lv-unfamiliar"></i>不熟 ${L.unfamiliar}</span>
+          <span><i class="dot lv-unlearned"></i>未学 ${L.unlearned}</span>
+        </div>
+        <div class="bc-foot muted small">已学 ${learned} / ${total} · 待复习 ${q.review.length} · 待新学 ${q.newWords.length}</div>
+        <button class="cat-expand" data-cat="${this.esc(active)}">${isOpen ? "收起单词 ▲" : "查看单词 ▼"}</button>
+        ${isOpen ? this.categoryWordRows(active) : ""}
       </section>`;
+
+    const list = cats.map(c => {
+      const on = c.name === active;
+      return `<button class="book-row ${on ? "active" : ""}" data-book="${this.esc(c.name)}">
+        <span class="book-av">${this.esc(c.name.slice(0, 1).toUpperCase())}</span>
+        <span class="book-name">${this.esc(c.name)} <span class="muted small">(${c.total})</span></span>
+        ${on ? '<span class="book-cur-tag">学习中 ✓</span>' : '<span class="book-pick muted small">选择</span>'}
+      </button>`;
     }).join("");
 
     return `
       <h2 class="page-title">词库</h2>
-      <p class="muted small" style="margin:-4px 4px 12px">勾选「学习」把该分类加入每日学习范围；点分类可展开查看单词。</p>
-      ${cards}
+      ${curCard}
+      <div class="lib-ribbon">Word Library · 选择词库（一次学一个）</div>
+      <section class="card book-list">${list}</section>
     `;
+  },
+
+  // 某词库的单词列表（带熟练度圆圈）
+  categoryWordRows(name) {
+    const words = Store.allWords().filter(w => Store.category(w) === name);
+    const rows = words.slice(0, 300).map(w => {
+      const state = Store.getState(w.word);
+      const pct = !state || state.status === "new" ? "未学" : Math.round(SRS.proficiency(state) * 100) + "%";
+      const cn = state && state.counts ? state.counts : { know: 0, vague: 0, forget: 0 };
+      const tip = `认识 ${cn.know || 0} · 模糊 ${cn.vague || 0} · 忘记 ${cn.forget || 0}`;
+      return `<tr title="${tip}">
+        <td class="prof-cell">${this.proficiencyCircle(state)}</td>
+        <td><b>${this.esc(w.word)}</b><div class="muted small">${this.esc(w.meaning)}</div></td>
+        <td class="prof-pct muted small">${pct}</td>
+      </tr>`;
+    }).join("");
+    return `<table class="wordtable">${rows}</table>${words.length > 300 ? `<p class="muted small center">仅显示前 300 个</p>` : ""}`;
   },
 
   /* ---------------- 我的（账号 + 设置）---------------- */
@@ -720,13 +742,15 @@ const App = {
     };
     if ($("speechRate")) $("speechRate").onchange = () => this.speak("natural");
 
-    // 词库分类：勾选加入学习范围 + 展开单词
-    document.querySelectorAll(".catChk").forEach(chk => {
-      chk.onchange = () => {
-        const ok = Store.toggleCategory(chk.dataset.cat);
-        if (!ok) { chk.checked = true; alert("至少保留一个分类用于学习"); return; }
-        Store.data.session = null;   // 学习范围变了，清掉旧队列，下次进学习重建
+    // 词库：选择当前学习的词库（一次一个）
+    document.querySelectorAll(".book-row").forEach(row => {
+      row.onclick = () => {
+        const name = row.dataset.book;
+        if (name === Store.activeCategory()) { this.expandedCat = name; this.render(); return; }
+        Store.setActiveCategory(name);
+        Store.data.session = null;   // 换词库，清掉旧队列，下次进学习重建
         this.session = null;
+        this.expandedCat = null;
         this.render();
       };
     });

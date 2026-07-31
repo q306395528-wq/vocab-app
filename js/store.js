@@ -4,7 +4,7 @@ const Store = {
 
   _defaults() {
     return {
-      settings: { dailyNew: 15, dailyReviewCap: 200, speechRate: 0.95, voiceName: "", onlineTTS: true, activeCategories: [] },
+      settings: { dailyNew: 15, dailyReviewCap: 200, speechRate: 0.95, voiceName: "", onlineTTS: true, activeCategory: "" },
       progress: {},          // word -> SRS state
       customWords: [],       // 用户导入的自定义单词
       daily: {},             // "YYYY-MM-DD" -> { studied, newLearned, reviewed }
@@ -116,47 +116,58 @@ const Store = {
     s.lastDay = t;
   },
 
-  // 单词所属分类（取第一个标签，自定义词归“自定义”）
+  // 单词所属词库分类（取第一个标签，自定义词归“自定义”）
   category(w) { return (w.tags && w.tags[0]) || "未分类"; },
 
-  // 学习范围内的单词（按选中的分类过滤；空 = 全部）
-  activeWords() {
-    const active = this.data.settings.activeCategories;
-    const all = this.allWords();
-    if (!active || !active.length) return all;
-    return all.filter(w => active.includes(this.category(w)));
-  },
-
-  // 分类汇总：每类的总数/已掌握/学习中/是否在学习范围内
-  categories() {
+  // 所有词库分类及词数，按词数降序
+  allCategories() {
     const map = {};
     for (const w of this.allWords()) {
-      const cat = this.category(w);
-      if (!map[cat]) map[cat] = { name: cat, total: 0, mastered: 0, learning: 0 };
-      map[cat].total++;
-      const st = this.getState(w.word);
-      if (st && st.status === "mastered") map[cat].mastered++;
-      else if (st && st.status !== "new") map[cat].learning++;
+      const c = this.category(w);
+      map[c] = (map[c] || 0) + 1;
     }
-    const active = this.data.settings.activeCategories;
-    return Object.values(map)
-      .map(c => ({ ...c, active: !active || !active.length || active.includes(c.name) }))
-      .sort((a, b) => b.total - a.total);
+    return Object.keys(map).map(name => ({ name, total: map[name] })).sort((a, b) => b.total - a.total);
   },
 
-  // 切换某分类是否加入学习（保持至少一个分类；全选时归一化为空=全部）
-  toggleCategory(name) {
-    const cats = this.categories().map(c => c.name);
-    let cur = (this.data.settings.activeCategories && this.data.settings.activeCategories.length)
-      ? this.data.settings.activeCategories.slice() : cats.slice();
-    cur = cur.includes(name) ? cur.filter(n => n !== name) : cur.concat(name);
-    if (cur.length === 0) return false;                 // 不允许一个都不选
-    this.data.settings.activeCategories = cur.length === cats.length ? [] : cur;
+  // 当前正在学习的词库（一次一个）；未指定则取词数最多的
+  activeCategory() {
+    const cats = this.allCategories();
+    if (!cats.length) return "";
+    const cur = this.data.settings.activeCategory;
+    if (cur && cats.some(c => c.name === cur)) return cur;
+    return cats[0].name;
+  },
+
+  setActiveCategory(name) {
+    this.data.settings.activeCategory = name;
     this.save();
-    return true;
   },
 
-  // 今日待办：到期复习 + 未超过每日上限的新词（仅学习范围内）
+  // 学习范围 = 当前词库的单词
+  activeWords() {
+    const cat = this.activeCategory();
+    return this.allWords().filter(w => this.category(w) === cat);
+  },
+
+  // 某词库的熟练度分级统计：标熟/熟悉/一般/不熟/未学
+  categoryStats(name) {
+    const levels = { mature: 0, familiar: 0, normal: 0, unfamiliar: 0, unlearned: 0 };
+    let total = 0;
+    for (const w of this.allWords()) {
+      if (this.category(w) !== name) continue;
+      total++;
+      const st = this.getState(w.word);
+      if (!st || st.status === "new") { levels.unlearned++; continue; }
+      const p = SRS.proficiency(st);
+      if (st.status === "mastered" || p >= 0.85) levels.mature++;
+      else if (p >= 0.5) levels.familiar++;
+      else if (p >= 0.2) levels.normal++;
+      else levels.unfamiliar++;
+    }
+    return { total, levels };
+  },
+
+  // 今日待办：到期复习 + 未超过每日上限的新词（仅当前词库）
   getQueue() {
     const now = Date.now();
     const all = this.activeWords();
