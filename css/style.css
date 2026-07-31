@@ -250,6 +250,23 @@ body.recall-mode main { overflow: hidden; overscroll-behavior: none; }
 .voice-sel:focus { outline: none; border-color: var(--accent); }
 .btn-mini { background: var(--accent-soft); color: var(--accent); border: none; border-radius: 10px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .btn-mini:active { opacity: .7; }
+/* 我的·概览 */
+.mine-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
+.ms-num { font-size: 22px; font-weight: 800; color: var(--accent); }
+.ms-lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* 词库分类卡片 */
+.cat-card { padding-bottom: 8px; }
+.cat-head { display: flex; align-items: center; gap: 12px; }
+.cat-info { flex: 1; min-width: 0; }
+.cat-name { font-size: 16px; font-weight: 700; }
+.cat-sub { margin: 3px 0 8px; }
+.cat-prog { height: 8px; }
+.cat-toggle { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; color: var(--muted); cursor: pointer; flex: 0 0 auto; }
+.cat-toggle input { width: 22px; height: 22px; accent-color: var(--accent); }
+.cat-expand { width: 100%; background: transparent; border: none; color: var(--muted); font-size: 13px; padding: 10px 0 4px; margin-top: 6px; border-top: 1px solid var(--line); cursor: pointer; }
+.cat-expand:active { color: var(--accent); }
+
 .auth-actions { display: flex; align-items: center; gap: 10px; }
 .auth-actions .btn-primary { width: auto; flex: 1; }
 .auth-actions .btn-ghost { width: auto; margin-top: 0; }

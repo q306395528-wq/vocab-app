@@ -1,7 +1,8 @@
 // 主程序：视图渲染 + 交互
 const App = {
-  view: "home",
+  view: "study",
   session: null,
+  expandedCat: null,
 
   speechVoices: [],
   currentVoice: null,
@@ -33,7 +34,7 @@ const App = {
       if (!chosen) chosen = this.bestVoice(this.speechVoices);
       this.currentVoice = chosen || this.currentVoice || null;
       // 语音列表变化后，如果正停留在设置页，刷新下拉框
-      if (this.speechVoices.length !== prevCount && this.view === "library") this.render();
+      if (this.speechVoices.length !== prevCount && this.view === "mine") this.render();
     };
     pick();
     if (window.speechSynthesis && speechSynthesis.onvoiceschanged !== undefined) {
@@ -54,7 +55,7 @@ const App = {
       this.speechVoices = all.filter(v => /^en/i.test(v.lang));
       const saved = Store.data.settings.voiceName;
       this.currentVoice = (saved && this.speechVoices.find(v => v.name === saved)) || this.bestVoice(this.speechVoices) || this.currentVoice;
-      if (this.view === "library") this.render();
+      if (this.view === "mine") this.render();
     }, 400);
   },
 
@@ -101,10 +102,10 @@ const App = {
     main.scrollTop = 0;
     document.body.classList.toggle("study-mode", this.view === "study");
     if (this.view !== "study") document.body.classList.remove("recall-mode");
-    if (this.view === "home") main.innerHTML = this.renderHome();
-    else if (this.view === "study") this.renderStudy(main);
+    if (this.view === "study") this.renderStudy(main);
     else if (this.view === "stats") main.innerHTML = this.renderStats();
     else if (this.view === "library") main.innerHTML = this.renderLibrary();
+    else if (this.view === "mine") main.innerHTML = this.renderMine();
     this.afterRender();
   },
 
@@ -164,7 +165,7 @@ const App = {
             <div class="empty">
               <div class="empty-emoji">🎉</div>
               <div class="empty-title">今日任务已完成</div>
-              <p class="muted">明天再来，或去「词库」调整每日新词量。</p>
+              <p class="muted">明天再来，或去「我的」调整每日新词量、「词库」选择学习分类。</p>
             </div>`;
           return;
         }
@@ -497,26 +498,68 @@ const App = {
   },
 
   /* ---------------- 词库页 ---------------- */
+  /* ---------------- 词库（按分类分组）---------------- */
   renderLibrary() {
-    const all = Store.allWords();
-    const c = Store.counts();
-    const st = Store.data.settings;
-    const rows = all.slice(0, 300).map(w => {
-      const state = Store.getState(w.word);
-      const status = !state || state.status === "new" ? "未学"
-        : state.status === "mastered" ? "已掌握"
-        : state.status === "review" ? "复习中" : "学习中";
-      const cls = !state || state.status === "new" ? "s-new"
-        : state.status === "mastered" ? "s-mastered"
-        : state.status === "review" ? "s-review" : "s-learning";
-      return `<tr>
-        <td><b>${this.esc(w.word)}</b><div class="muted small">${this.esc(w.meaning)}</div></td>
-        <td><span class="pill ${cls}">${status}</span></td>
-      </tr>`;
+    const cats = Store.categories();
+    const expand = this.expandedCat;
+    const cards = cats.map(cat => {
+      const pct = cat.total ? Math.round((cat.mastered / cat.total) * 100) : 0;
+      const isOpen = expand === cat.name;
+      const words = isOpen ? Store.allWords().filter(w => Store.category(w) === cat.name) : [];
+      const rows = words.slice(0, 200).map(w => {
+        const state = Store.getState(w.word);
+        const status = !state || state.status === "new" ? "未学"
+          : state.status === "mastered" ? "已掌握"
+          : state.status === "review" ? "复习中" : "学习中";
+        const cls = !state || state.status === "new" ? "s-new"
+          : state.status === "mastered" ? "s-mastered"
+          : state.status === "review" ? "s-review" : "s-learning";
+        return `<tr><td><b>${this.esc(w.word)}</b><div class="muted small">${this.esc(w.meaning)}</div></td><td><span class="pill ${cls}">${status}</span></td></tr>`;
+      }).join("");
+      return `
+      <section class="card cat-card">
+        <div class="cat-head" data-cat="${this.esc(cat.name)}">
+          <div class="cat-info">
+            <div class="cat-name">${this.esc(cat.name)} <span class="muted small">${cat.total} 词</span></div>
+            <div class="cat-sub muted small">已掌握 ${cat.mastered} · 学习中 ${cat.learning}</div>
+            <div class="progress cat-prog"><div class="progress-fill" style="width:${pct}%"></div></div>
+          </div>
+          <label class="cat-toggle" title="是否加入学习">
+            <input type="checkbox" class="catChk" data-cat="${this.esc(cat.name)}" ${cat.active ? "checked" : ""} />
+            <span>学习</span>
+          </label>
+        </div>
+        <button class="cat-expand" data-cat="${this.esc(cat.name)}">${isOpen ? "收起单词 ▲" : "查看单词 ▼"}</button>
+        ${isOpen ? `<table class="wordtable">${rows}</table>${words.length > 200 ? `<p class="muted small center">仅显示前 200 个</p>` : ""}` : ""}
+      </section>`;
     }).join("");
 
     return `
-      <h2 class="page-title">词库与设置</h2>
+      <h2 class="page-title">词库</h2>
+      <p class="muted small" style="margin:-4px 4px 12px">勾选「学习」把该分类加入每日学习范围；点分类可展开查看单词。</p>
+      ${cards}
+    `;
+  },
+
+  /* ---------------- 我的（账号 + 设置）---------------- */
+  renderMine() {
+    const st = Store.data.settings;
+    const c = Store.counts();
+    const learnedToday = Store.todayLearned();
+    const q = Store.getQueue();
+    const dueTotal = q.review.length + q.newWords.length;
+
+    return `
+      <h2 class="page-title">我的</h2>
+
+      <section class="card">
+        <div class="mine-summary">
+          <div class="ms-item"><div class="ms-num">${learnedToday}</div><div class="ms-lbl">今日已学</div></div>
+          <div class="ms-item"><div class="ms-num">🔥 ${Store.data.streak.count || 0}</div><div class="ms-lbl">连续打卡</div></div>
+          <div class="ms-item"><div class="ms-num">${dueTotal}</div><div class="ms-lbl">今日待学</div></div>
+          <div class="ms-item"><div class="ms-num">${c.mastered}</div><div class="ms-lbl">已掌握</div></div>
+        </div>
+      </section>
 
       ${this.auth.token ? `
       <section class="card">
@@ -569,12 +612,6 @@ const App = {
         <textarea id="importArea" class="import-area" placeholder="apple,苹果&#10;brave,勇敢的,Be brave."></textarea>
         <button class="btn-primary" id="importBtn">导入</button>
         <span id="importMsg" class="muted small"></span>
-      </section>
-
-      <section class="card">
-        <div class="card-row"><b>全部单词</b><span class="muted">共 ${c.total} 词</span></div>
-        <table class="wordtable">${rows}</table>
-        ${all.length > 300 ? `<p class="muted small center">仅显示前 300 个</p>` : ""}
       </section>
 
       <section class="card danger-zone">
@@ -658,6 +695,23 @@ const App = {
       if (label) label.textContent = `${Number(e.target.value).toFixed(2)}×`;
     };
     if ($("speechRate")) $("speechRate").onchange = () => this.speak("natural");
+
+    // 词库分类：勾选加入学习范围 + 展开单词
+    document.querySelectorAll(".catChk").forEach(chk => {
+      chk.onchange = () => {
+        const ok = Store.toggleCategory(chk.dataset.cat);
+        if (!ok) { chk.checked = true; alert("至少保留一个分类用于学习"); return; }
+        Store.data.session = null;   // 学习范围变了，清掉旧队列，下次进学习重建
+        this.session = null;
+        this.render();
+      };
+    });
+    document.querySelectorAll(".cat-expand").forEach(btn => {
+      btn.onclick = () => {
+        this.expandedCat = this.expandedCat === btn.dataset.cat ? null : btn.dataset.cat;
+        this.render();
+      };
+    });
 
     if ($("loginBtn")) $("loginBtn").onclick = () => this.doAuth("login");
     if ($("registerBtn")) $("registerBtn").onclick = () => this.doAuth("register");
