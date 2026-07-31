@@ -432,15 +432,15 @@ const App = {
       </section>
 
       <section class="grid2">
-        <div class="stat-card"><div class="stat-num">🔥 ${Store.data.streak.count || 0}</div><div class="stat-label">连续打卡（天）</div></div>
-        <div class="stat-card"><div class="stat-num">${learnedToday}</div><div class="stat-label">今日已学</div></div>
-        <div class="stat-card"><div class="stat-num">${totalStudied}</div><div class="stat-label">累计学习次数</div></div>
-        <div class="stat-card"><div class="stat-num">${activeDays}</div><div class="stat-label">学习天数</div></div>
+        <div class="stat-card"><span class="stat-ic">🔥</span><div class="stat-body"><div class="stat-num">${Store.data.streak.count || 0}</div><div class="stat-label">连续打卡（天）</div></div></div>
+        <div class="stat-card"><span class="stat-ic">✅</span><div class="stat-body"><div class="stat-num">${learnedToday}</div><div class="stat-label">今日已学</div></div></div>
+        <div class="stat-card"><span class="stat-ic">👆</span><div class="stat-body"><div class="stat-num">${totalStudied}</div><div class="stat-label">累计学习</div></div></div>
+        <div class="stat-card"><span class="stat-ic">📅</span><div class="stat-body"><div class="stat-num">${activeDays}</div><div class="stat-label">学习天数</div></div></div>
       </section>
 
       <section class="card">
         <div class="card-row"><b>学习日历</b><span class="muted small">近 12 周</span></div>
-        <div class="heatmap">${this.calendarHeatmap(daily)}</div>
+        ${(() => { const hm = this.calendarHeatmap(daily); return `<div class="hm-months">${hm.monthsHtml}</div><div class="heatmap">${hm.colsHtml}</div>`; })()}
         <div class="heat-legend"><span>少</span><i class="heat-cell heat-l0"></i><i class="heat-cell heat-l1"></i><i class="heat-cell heat-l2"></i><i class="heat-cell heat-l3"></i><i class="heat-cell heat-l4"></i><span>多</span></div>
       </section>
 
@@ -482,23 +482,38 @@ const App = {
     </svg>`;
   },
 
-  // 学习日历热力图（近 12 周，GitHub 贡献图风格）
+  // 学习日历热力图（近 12 周，按周成列铺满宽度，带月份标注）
   calendarHeatmap(daily) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const totalDays = 12 * 7;
     const start = new Date(today);
-    start.setDate(start.getDate() - (totalDays - 1));
+    start.setDate(start.getDate() - (12 * 7 - 1));
     start.setDate(start.getDate() - start.getDay()); // 对齐到周日
+    const weeks = Math.ceil((Math.round((today - start) / 86400000) + 1) / 7);
     const level = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 20 ? 3 : 4;
     const key = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    let html = "";
+
     const cur = new Date(start);
-    while (cur <= today) {
-      const n = (daily[key(cur)] || {}).studied || 0;
-      html += `<div class="heat-cell heat-l${level(n)}" title="${key(cur)}: ${n} 次"></div>`;
-      cur.setDate(cur.getDate() + 1);
+    const cols = [];
+    const months = [];
+    let prevM = -1;
+    for (let c = 0; c < weeks; c++) {
+      const colMonth = new Date(start); colMonth.setDate(colMonth.getDate() + c * 7);
+      const m = colMonth.getMonth();
+      months.push(`<div class="hm-mcol">${m !== prevM ? (m + 1) + "月" : ""}</div>`);
+      prevM = m;
+      let cells = "";
+      for (let r = 0; r < 7; r++) {
+        if (cur <= today) {
+          const n = (daily[key(cur)] || {}).studied || 0;
+          cells += `<div class="heat-cell heat-l${level(n)}" title="${key(cur)}: ${n} 次"></div>`;
+        } else {
+          cells += `<div class="heat-cell heat-empty"></div>`;
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+      cols.push(`<div class="hm-col">${cells}</div>`);
     }
-    return html;
+    return { monthsHtml: months.join(""), colsHtml: cols.join("") };
   },
 
   // 未来 7 天待复习词量预测
