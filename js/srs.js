@@ -39,7 +39,13 @@ const SRS = {
   },
 
   newState() {
-    return { stability: 0, difficulty: 0, reps: 0, lapses: 0, due: 0, lastReview: 0, status: "new", interval: 0, pass: false };
+    return { stability: 0, difficulty: 0, reps: 0, lapses: 0, due: 0, lastReview: 0, status: "new", interval: 0, pass: false, counts: { know: 0, vague: 0, forget: 0 } };
+  },
+
+  // 由记忆稳定度换算的熟练度 0~1（稳定度达到约21天即视为满/已掌握）
+  proficiency(state) {
+    if (!state || state.status === "new" || !state.stability) return 0;
+    return this.clamp(state.stability / 21, 0, 1);
   },
 
   clamp(x, lo, hi) { return Math.min(hi, Math.max(lo, x)); },
@@ -112,6 +118,9 @@ const SRS = {
     else s.status = s.interval >= 21 ? "mastered" : "review";
     s.due = now + s.interval * this.DAY;
     s.pass = g === "know";
+    // 记录每个词的点击次数（认识/模糊/忘记）
+    s.counts = { ...(state.counts || { know: 0, vague: 0, forget: 0 }) };
+    s.counts[g] = (s.counts[g] || 0) + 1;
     return s;
   },
 

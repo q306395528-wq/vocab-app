@@ -253,6 +253,7 @@ const App = {
       <div class="wordcard ${s.revealed ? "is-revealed" : "tappable"}" id="revealZone">
         <div class="wcard-top">
           <div class="wt-left">
+            ${this.proficiencyCircle(prev)}
             ${isNew ? '<span class="badge-new">新词</span>' : '<span class="badge-review">复习</span>'}
             ${primaryTag ? `<span class="corner-tag">${this.esc(primaryTag)}</span>` : ""}
           </div>
@@ -316,6 +317,28 @@ const App = {
           ${tags.length ? `<div class="tags">${tags.map(t => `<span class="tag">${this.esc(t)}</span>`).join("")}</div>` : ""}
         </div>
       </div>`;
+  },
+
+  // 熟练度圆圈：填充比例=熟练度，颜色=状态（绿=良好/已掌握，橙=易忘，灰=未学）
+  proficiencyCircle(state) {
+    const R = 9, CX = 12, CY = 12;
+    const ring = c => `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${c}" stroke-width="2.5"/>`;
+    if (!state || state.status === "new") {
+      return `<svg class="prof" viewBox="0 0 24 24">${ring("var(--new)")}</svg>`;
+    }
+    const p = state.status === "mastered" ? 1 : Math.max(0.06, SRS.proficiency(state));
+    const weak = (state.lapses > 0 && p < 0.6) || (state.difficulty || 0) >= 7.5;
+    const color = weak ? "var(--vague)" : "var(--accent)";
+    let fill;
+    if (p >= 1) {
+      fill = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="${color}"/>`;
+    } else {
+      const a = p * 2 * Math.PI;
+      const ex = (CX + R * Math.sin(a)).toFixed(2), ey = (CY - R * Math.cos(a)).toFixed(2);
+      const large = p > 0.5 ? 1 : 0;
+      fill = `<path d="M${CX},${CY} L${CX},${CY - R} A${R},${R} 0 ${large} 1 ${ex},${ey} Z" fill="${color}"/>`;
+    }
+    return `<svg class="prof" viewBox="0 0 24 24">${ring(color)}${fill}</svg>`;
   },
 
   gradeButtons(st) {
@@ -508,13 +531,14 @@ const App = {
       const words = isOpen ? Store.allWords().filter(w => Store.category(w) === cat.name) : [];
       const rows = words.slice(0, 200).map(w => {
         const state = Store.getState(w.word);
-        const status = !state || state.status === "new" ? "未学"
-          : state.status === "mastered" ? "已掌握"
-          : state.status === "review" ? "复习中" : "学习中";
-        const cls = !state || state.status === "new" ? "s-new"
-          : state.status === "mastered" ? "s-mastered"
-          : state.status === "review" ? "s-review" : "s-learning";
-        return `<tr><td><b>${this.esc(w.word)}</b><div class="muted small">${this.esc(w.meaning)}</div></td><td><span class="pill ${cls}">${status}</span></td></tr>`;
+        const pct = !state || state.status === "new" ? "未学" : Math.round(SRS.proficiency(state) * 100) + "%";
+        const cn = state && state.counts ? state.counts : { know: 0, vague: 0, forget: 0 };
+        const tip = `认识 ${cn.know || 0} · 模糊 ${cn.vague || 0} · 忘记 ${cn.forget || 0}`;
+        return `<tr title="${tip}">
+          <td class="prof-cell">${this.proficiencyCircle(state)}</td>
+          <td><b>${this.esc(w.word)}</b><div class="muted small">${this.esc(w.meaning)}</div></td>
+          <td class="prof-pct muted small">${pct}</td>
+        </tr>`;
       }).join("");
       return `
       <section class="card cat-card">

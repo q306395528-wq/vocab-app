@@ -277,6 +277,12 @@ body.recall-mode main { overflow: hidden; overscroll-behavior: none; }
 .import-area:focus { outline: none; border-color: var(--accent); }
 code { background: var(--bg-elevated); padding: 1px 5px; border-radius: 5px; font-size: 12px; color: var(--accent); }
 
+/* 熟练度圆圈 */
+.prof { width: 22px; height: 22px; flex: 0 0 auto; display: block; }
+.wt-left .prof { width: 20px; height: 20px; }
+.prof-cell { width: 30px; text-align: center; vertical-align: middle; }
+.prof-pct { width: 44px; text-align: right; white-space: nowrap; }
+
 .wordtable { width: 100%; border-collapse: collapse; }
 .wordtable td { padding: 10px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; font-size: 14px; }
 .wordtable td:last-child { text-align: right; white-space: nowrap; }
