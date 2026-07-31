@@ -277,9 +277,11 @@ body.recall-mode main { overflow: hidden; overscroll-behavior: none; }
 .book-list { padding: 4px 6px; }
 .book-row { width: 100%; display: flex; align-items: center; gap: 14px; background: transparent; border: none; border-bottom: 1px solid var(--line); padding: 14px 8px; cursor: pointer; text-align: left; color: var(--text); }
 .book-row:last-child { border-bottom: none; }
-.book-av { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 700; font-size: 16px; color: var(--muted); flex: 0 0 auto; }
+.book-ring { width: 42px; height: 42px; flex: 0 0 auto; display: block; }
+.book-ring-txt { fill: var(--text); font-weight: 700; font-size: 14px; }
 .book-row.active { background: var(--accent-soft); border-radius: 12px; }
-.book-row.active .book-av { border-color: var(--accent); color: var(--accent); }
+.ring-legend { display: flex; gap: 16px; margin: -4px 6px 10px; }
+.ring-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
 .book-name { flex: 1; font-size: 16px; font-weight: 600; }
 .book-cur-tag { font-size: 12px; color: var(--accent); font-weight: 600; flex: 0 0 auto; }
 .book-pick { flex: 0 0 auto; }

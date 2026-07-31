@@ -556,7 +556,7 @@ const App = {
     const list = cats.map(c => {
       const on = c.name === active;
       return `<button class="book-row ${on ? "active" : ""}" data-book="${this.esc(c.name)}">
-        <span class="book-av">${this.esc(c.name.slice(0, 1).toUpperCase())}</span>
+        ${this.bookRing(c.name)}
         <span class="book-name">${this.esc(c.name)} <span class="muted small">(${c.total})</span></span>
         ${on ? '<span class="book-cur-tag">学习中 ✓</span>' : '<span class="book-pick muted small">选择</span>'}
       </button>`;
@@ -566,8 +566,41 @@ const App = {
       <h2 class="page-title">词库</h2>
       ${curCard}
       <div class="lib-ribbon">Word Library · 选择词库（一次学一个）</div>
+      <div class="ring-legend muted small">
+        <span><i class="dot seg-mastered"></i>已学</span>
+        <span><i class="dot lv-normal"></i>复习</span>
+        <span><i class="dot lv-unlearned"></i>待学习</span>
+      </div>
       <section class="card book-list">${list}</section>
     `;
+  },
+
+  // 词库进度环：已学(绿)/复习(黄)/待学习(灰) 三色比例，中心为首字母
+  bookRing(name) {
+    let mastered = 0, reviewing = 0, unlearned = 0;
+    for (const w of Store.allWords()) {
+      if (Store.category(w) !== name) continue;
+      const st = Store.getState(w.word);
+      if (!st || st.status === "new") unlearned++;
+      else if (st.status === "mastered") mastered++;
+      else reviewing++;
+    }
+    const total = mastered + reviewing + unlearned || 1;
+    const r = 16, CX = 20, CY = 20, C = 2 * Math.PI * r;
+    const arc = (val, color, offset) => {
+      const len = val / total * C;
+      return `<circle cx="${CX}" cy="${CY}" r="${r}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="butt" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${CX} ${CY})"/>`;
+    };
+    let off = 0;
+    let arcs = "";
+    if (mastered) { arcs += arc(mastered, "var(--mastered)", off); off += mastered / total * C; }
+    if (reviewing) { arcs += arc(reviewing, "var(--vague)", off); off += reviewing / total * C; }
+    const letter = this.esc(name.slice(0, 1).toUpperCase());
+    return `<svg class="book-ring" viewBox="0 0 40 40">
+      <circle cx="${CX}" cy="${CY}" r="${r}" fill="none" stroke="#45454b" stroke-width="4"/>
+      ${arcs}
+      <text x="20" y="21" text-anchor="middle" dominant-baseline="central" class="book-ring-txt">${letter}</text>
+    </svg>`;
   },
 
   // 某词库的单词列表（带熟练度圆圈）
